@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<title>three.js--RayTracing</title>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+	<link type="text/css" rel="stylesheet" href="main.css">
+	<style>
+		body {
+			background-color: #f0f0f0;
+			color: #444;
+		}
+
+		a {
+			color: #08f;
+		}
+	</style>
+</head>
+
+<body>
+
+	<div id="info">
+		<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> RayTracing
+	</div>
+	<script src='../build/three.min.js'></script>
+	<script src='./js/libs/stats.min.js'></script>
+	<script src='./js/dat.gui.min.js'></script>
+	<script src='./js/controls/TrackballControls.js'></script>
+	<script src='./js/renderers/RaytracingRenderer.js'></script>
+	<script src="./js/RGBELoader.js"></script>
+
+	<script>
+
+		let container, stats;
+		let spinCamera, scene, renderer;
+		let controls, perspectiveCamera;
+
+		let theta = 0;
+		const radius = 100;
+
+		const params = {
+			doSpin: false,
+			count: 500
+		};
+
+		const randomizeMatrix = function () {
+			const position = new THREE.Vector3();
+			const rotation = new THREE.Euler();
+			const quaternion = new THREE.Quaternion();
+			const scale = new THREE.Vector3();
+			return function (matrix) {
+
+				position.x = Math.random() * 800 - 400;
+				position.y = Math.random() * 800 - 400;
+				position.z = Math.random() * 800 - 400;
+
+				rotation.x = Math.random() * 2 * Math.PI;
+				rotation.y = Math.random() * 2 * Math.PI;
+				rotation.z = Math.random() * 2 * Math.PI;
+
+				quaternion.setFromEuler(rotation);
+
+				scale.x = Math.random() + 0.5;
+				scale.y = Math.random() + 0.5;
+				scale.z = Math.random() + 0.5;
+
+				matrix.compose(position, quaternion, scale);
+			};
+		}();
+
+		init();
+		initMesh();
+		animate();
+
+		function clean() {
+
+			const meshes = [];
+			scene.traverse(function (object) {
+				if (object.isMesh) meshes.push(object);
+			});
+
+			for (let i = 0; i < meshes.length; i++) {
+				const mesh = meshes[i];
+				mesh.material.dispose();
+				mesh.geometry.dispose();
+				scene.remove(mesh);
+			}
+		}
+
+		function initMesh() {
+
+			// Objects //
+
+			const matrix = new THREE.Matrix4();
+
+			const Box = new THREE.BoxGeometry(20, 20, 20);
+			for (let i = 0; i < params.count; i++) {
+				//const material = new THREE.RayTracingMaterial();
+				const material = new THREE.MeshStandardMaterial();
+				material.transparent = (Math.random() > 0.8);
+				material.color = new THREE.Color(Math.random() * 0xff0000);
+				material.roughness = Math.random();
+				material.metalness = Math.random();
+				// material.normalMap = normalMap4;
+				// material.map = normalMap2;
+				material.normalScale = new THREE.Vector2(0.15, 0.15);
+				
+				const object = new THREE.Mesh(Box, material);
+				randomizeMatrix(matrix);
+				object.applyMatrix4(matrix);
+				scene.add(object);
+			}
+
+			const Cylinder = new THREE.CylinderGeometry(0, 10, 30, 4, 1);
+			for (let i = 0; i < params.count; i++) {
+				//const material = new THREE.RayTracingMaterial();
+				const material = new THREE.MeshStandardMaterial();
+				material.transparent = (Math.random() > 0.8);
+				material.color = new THREE.Color(Math.random() * 0xff0000);
+				material.roughness = Math.random();
+				material.metalness = Math.random();
+				// material.normalMap = normalMap4;
+				material.normalScale = new THREE.Vector2(0.15, 0.15);
+				
+				const object2 = new THREE.Mesh(Cylinder, material);
+				randomizeMatrix(matrix);
+				object2.applyMatrix4(matrix);
+				scene.add(object2);
+			}
+
+			const Sphere = new THREE.IcosahedronGeometry(10, 3);
+			for (let i = 0; i < params.count; i++) {
+				const material = new THREE.MeshStandardMaterial();
+				//const material = new THREE.RayTracingMaterial();
+				material.transparent = (Math.random() > 0.8);
+				material.color = new THREE.Color(Math.random() * 0xff0000);
+				material.roughness = Math.random();
+				material.metalness = Math.random();
+				// material.normalMap = normalMap;
+				material.normalScale = new THREE.Vector2(0.15, 0.15);
+
+				const object3 = new THREE.Mesh(Sphere, material);
+				randomizeMatrix(matrix);
+				object3.applyMatrix4(matrix);
+				scene.add(object3);
+			}
+
+		}
+
+		function init() {
+
+			container = document.createElement('div');
+			document.body.appendChild(container);
+
+			const aspect = window.innerWidth / window.innerHeight;
+
+			spinCamera = new THREE.PerspectiveCamera(70, aspect, 1, 10000);
+			spinCamera.position.z = 500;
+			perspectiveCamera = new THREE.PerspectiveCamera(60, aspect, 1, 1000);
+			perspectiveCamera.position.z = 500;
+
+			scene = new THREE.Scene();
+
+			scene.background = new THREE.Color(0x102030);
+
+			const dirLight = new THREE.SoftDirectionalLight(0xffffff, 2, 0.3); // color, intensity, softness
+			dirLight.softness = 0.1; // change softness to 0.6 for a softer shadow
+			scene.add(dirLight);
+
+			renderer = new THREE.RayTracingRenderer();
+			renderer.setPixelRatio(window.devicePixelRatio);
+			renderer.setSize(window.innerWidth, window.innerHeight);
+
+			renderer.toneMapping = THREE.ReinhardToneMapping;
+			container.appendChild(renderer.domElement);
+
+			stats = new Stats();
+			container.appendChild(stats.dom);
+
+			const gui = new dat.GUI();
+			gui.add(params, 'doSpin');
+			//gui.add(params, 'count', 100, 1000).step(50).onChange(initMesh);
+			gui.open();
+
+			window.addEventListener('resize', onWindowResize);
+			if (!params.doSpin) createControls(perspectiveCamera);
+
+			//THREE.DefaultLoadingManager.onLoad = animate;
+
+		}
+
+		function onWindowResize() {
+			const aspect = window.innerWidth / window.innerHeight;
+			if (params.doSpin) {
+				spinCamera.aspect = aspect;
+				spinCamera.updateProjectionMatrix();
+			}
+			if (!params.doSpin) {
+				perspectiveCamera.aspect = aspect;
+				perspectiveCamera.updateProjectionMatrix();
+				controls.handleResize();
+			}
+			renderer.setSize(window.innerWidth, window.innerHeight);
+		}
+
+		function createControls(camera) {
+			controls = new THREE.TrackballControls(camera, renderer.domElement);
+			controls.rotateSpeed = 1.0;
+			controls.zoomSpeed = 1.2;
+			controls.panSpeed = 0.8;
+			controls.keys = ['KeyA', 'KeyS', 'KeyD'];
+		}
+
+		function animate() {
+			requestAnimationFrame(animate);
+			controls.update();
+			stats.update();
+			render();
+		}
+
+		function render() {
+
+			theta += 0.1;
+
+			if (!params.doSpin) {
+				const camera = perspectiveCamera;
+				renderer.render(scene, camera);
+			}
+			if (params.doSpin) {
+				const camera = spinCamera;
+
+				camera.position.x = radius * Math.sin(THREE.MathUtils.degToRad(theta));
+				camera.position.y = radius * Math.sin(THREE.MathUtils.degToRad(theta));
+				camera.position.z = radius * Math.cos(THREE.MathUtils.degToRad(theta));
+				camera.lookAt(scene.position);
+				camera.updateMatrixWorld();
+
+				renderer.render(scene, camera);
+			}
+
+		}
+
+	</script>
+
+</body>
+
+</html>

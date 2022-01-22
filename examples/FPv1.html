@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<title>three.js webgl - interactive cubes</title>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+	<link type="text/css" rel="stylesheet" href="main.css">
+	<style>
+		body {
+			background-color: #f0f0f0;
+			color: #444;
+		}
+
+		a {
+			color: #08f;
+		}
+	</style>
+</head>
+
+<body>
+
+	<div id="info">
+		<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> webgl - interactive cubes
+	</div>
+
+	<script type="module">
+
+		import * as THREE from '../build/three.module.js';
+
+		import Stats from './jsm/libs/stats.module.js';
+
+		import { TrackballControls } from './jsm/controls/TrackballControls.js';
+		import { GUI } from './jsm/libs/lil-gui.module.min.js';
+
+		let container, stats;
+		let camera, scene, raycaster, renderer;
+
+		let controls, perspectiveCamera, orthographicCamera;
+
+		let INTERSECTED;
+		let theta = 0;
+
+		const pointer = new THREE.Vector2();
+		const radius = 100;
+
+		const paramC = {
+			orthographicCamera: false
+		};
+		
+		const frustumSize = 400;
+
+		init();
+		animate();
+
+		function init() {
+
+			container = document.createElement('div');
+			document.body.appendChild(container);
+
+			const aspect = window.innerWidth / window.innerHeight;
+			//camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 1, 10000);
+
+			perspectiveCamera = new THREE.PerspectiveCamera(60, aspect, 1, 1000);
+			perspectiveCamera.position.z = 500;
+
+			orthographicCamera = new THREE.OrthographicCamera(frustumSize * aspect / - 2, frustumSize * aspect / 2, frustumSize / 2, frustumSize / - 2, 1, 1000);
+			orthographicCamera.position.z = 500;
+
+			scene = new THREE.Scene();
+			scene.background = new THREE.Color(0xf0f0f0);
+
+			const light = new THREE.DirectionalLight(0xffffff, 1);
+			light.position.set(1, 1, 1).normalize();
+			scene.add(light);
+
+			const Box = new THREE.BoxGeometry(20, 20, 20);
+			for (let i = 0; i < 500; i++) {
+				const object = new THREE.Mesh(Box, new THREE.MeshLambertMaterial({ color: Math.random() * 0xffffff }));
+
+				object.position.x = Math.random() * 800 - 400;
+				object.position.y = Math.random() * 800 - 400;
+				object.position.z = Math.random() * 800 - 400;
+
+				object.rotation.x = Math.random() * 2 * Math.PI;
+				object.rotation.y = Math.random() * 2 * Math.PI;
+				object.rotation.z = Math.random() * 2 * Math.PI;
+
+				object.scale.x = Math.random() + 0.5;
+				object.scale.y = Math.random() + 0.5;
+				object.scale.z = Math.random() + 0.5;
+
+				scene.add(object);
+
+			}
+
+			const Cylinder = new THREE.CylinderGeometry( 0, 10, 30, 4, 1 );
+			for ( let i = 0; i < 500; i ++ ) {
+				const object2 = new THREE.Mesh(Cylinder, new THREE.MeshLambertMaterial({ color: Math.random() * 0xffffff }));
+
+				object2.position.x = Math.random() * 800 - 400;
+				object2.position.y = Math.random() * 800 - 400;
+				object2.position.z = Math.random() * 800 - 400;
+
+				object2.rotation.x = Math.random() * 2 * Math.PI;
+				object2.rotation.y = Math.random() * 2 * Math.PI;
+				object2.rotation.z = Math.random() * 2 * Math.PI;
+
+				object2.scale.x = Math.random() + 0.5;
+				object2.scale.y = Math.random() + 0.5;
+				object2.scale.z = Math.random() + 0.5;
+
+				scene.add(object2);
+			}
+
+			raycaster = new THREE.Raycaster();
+
+			renderer = new THREE.WebGLRenderer({ antialias: true });
+			renderer.setPixelRatio(window.devicePixelRatio);
+			renderer.setSize(window.innerWidth, window.innerHeight);
+			container.appendChild(renderer.domElement);
+
+			stats = new Stats();
+			container.appendChild(stats.dom);
+
+			const gui = new GUI();
+
+			gui.add( paramC, 'orthographicCamera' ).name( 'use orthographic' ).onChange( function ( value ) {
+					controls.dispose();
+					createControls( value ? orthographicCamera : perspectiveCamera );
+
+			} );
+
+			document.addEventListener('mousemove', onPointerMove);
+			//
+			window.addEventListener('resize', onWindowResize);
+			createControls( perspectiveCamera );
+		}
+
+		function onWindowResize() {
+			// camera.aspect = window.innerWidth / window.innerHeight;
+			// camera.updateProjectionMatrix();
+			const aspect = window.innerWidth / window.innerHeight;
+			// spinCamera.aspect = aspect;
+			// spinCamera.updateProjectionMatrix();
+			perspectiveCamera.aspect = aspect;
+			perspectiveCamera.updateProjectionMatrix();
+				
+			orthographicCamera.left = - frustumSize * aspect / 2;
+			orthographicCamera.right = frustumSize * aspect / 2;
+			orthographicCamera.top = frustumSize / 2;
+			orthographicCamera.bottom = - frustumSize / 2;
+			orthographicCamera.updateProjectionMatrix();
+
+			renderer.setSize(window.innerWidth, window.innerHeight);
+			controls.handleResize();
+		}
+
+		function onPointerMove(event) {
+
+			pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
+			pointer.y = - (event.clientY / window.innerHeight) * 2 + 1;
+
+		}
+
+		function createControls( Acamera ) {
+				controls = new TrackballControls( Acamera, renderer.domElement );
+				controls.rotateSpeed = 1.0;
+				controls.zoomSpeed = 1.2;
+				controls.panSpeed = 0.8;
+				controls.keys = [ 'KeyA', 'KeyS', 'KeyD' ];
+		}
+		//
+
+		function animate() {
+
+			requestAnimationFrame(animate);
+			controls.update();
+			render();
+			stats.update();
+
+		}
+
+		function render() {
+
+			// theta += 0.1;
+
+			// camera.position.x = radius * Math.sin(THREE.MathUtils.degToRad(theta));
+			// camera.position.y = radius * Math.sin(THREE.MathUtils.degToRad(theta));
+			// camera.position.z = radius * Math.cos(THREE.MathUtils.degToRad(theta));
+			// camera.lookAt(scene.position);
+
+			//camera.updateMatrixWorld();
+			const camera = ( paramC.orthographicCamera ) ? orthographicCamera : perspectiveCamera;
+			//camera.updateMatrixWorld();
+			// find intersections
+
+			raycaster.setFromCamera(pointer, camera);
+
+			const intersects = raycaster.intersectObjects(scene.children, false);
+
+			if (intersects.length > 0) {
+
+				if (INTERSECTED != intersects[0].object) {
+
+					if (INTERSECTED) INTERSECTED.material.emissive.setHex(INTERSECTED.currentHex);
+
+					INTERSECTED = intersects[0].object;
+					INTERSECTED.currentHex = INTERSECTED.material.emissive.getHex();
+					INTERSECTED.material.emissive.setHex(0xff0000);
+
+				}
+
+			} else {
+
+				if (INTERSECTED) INTERSECTED.material.emissive.setHex(INTERSECTED.currentHex);
+
+				INTERSECTED = null;
+
+			}
+
+			renderer.render(scene, camera);
+
+		}
+
+	</script>
+
+</body>
+
+</html>

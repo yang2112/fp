@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<title>three.js webgl - interactive cubes</title>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+	<link type="text/css" rel="stylesheet" href="main.css">
+	<style>
+		body {
+			background-color: #f0f0f0;
+			color: #444;
+		}
+
+		a {
+			color: #08f;
+		}
+	</style>
+</head>
+
+<body>
+
+	<div id="info">
+		<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> webgl - interactive cubes
+	</div>
+
+	<script type="module">
+
+		import * as THREE from '../build/three.module.js';
+		import Stats from './jsm/libs/stats.module.js';
+		import { TrackballControls } from './jsm/controls/TrackballControls.js';
+		import { GUI } from './jsm/libs/lil-gui.module.min.js';
+		import { HDRCubeTextureLoader } from './jsm/loaders/HDRCubeTextureLoader.js';
+		import { FlakesTexture } from './jsm/textures/FlakesTexture.js';
+		//import { AmmoPhysics } from './jsm/physics/AmmoPhysics.js';
+
+		let container, stats;
+		let spinCamera, scene, raycaster, renderer;
+		let controls, perspectiveCamera, orthographicCamera;
+
+		let INTERSECTED;
+		let theta = 0;
+
+		const pointer = new THREE.Vector2();
+		const radius = 100;
+
+		const paramC = {
+			orthographicCamera: false
+		};
+
+		const frustumSize = 400;
+
+		let particleLight;
+
+		let physics, position;
+
+
+		init();
+		animate();
+
+		function init() {
+
+			//physics = await AmmoPhysics();
+
+			container = document.createElement('div');
+			document.body.appendChild(container);
+
+			const aspect = window.innerWidth / window.innerHeight;
+
+			// spinCamera = new THREE.PerspectiveCamera(70, aspect, 1, 10000);
+			// spinCamera.position.z = 500;
+
+			perspectiveCamera = new THREE.PerspectiveCamera(60, aspect, 1, 1000);
+			perspectiveCamera.position.z = 500;
+
+			orthographicCamera = new THREE.OrthographicCamera(frustumSize * aspect / - 2, frustumSize * aspect / 2, frustumSize / 2, frustumSize / - 2, 1, 1000);
+			orthographicCamera.position.z = 500;
+
+			scene = new THREE.Scene();
+			scene.background = new THREE.Color(0xf0f0f0);
+
+			scene.fog = new THREE.FogExp2(0xcccccc, 0.002);
+
+			const light = new THREE.DirectionalLight(0xffffff, 1);
+			light.position.set(1, 1, 1).normalize();
+			scene.add(light);
+
+			particleLight = new THREE.Mesh(
+				new THREE.SphereGeometry(4, 8, 8),
+				new THREE.MeshBasicMaterial({ color: 0xffffff })
+			);
+			scene.add(particleLight);
+
+			particleLight.add(new THREE.PointLight(0xffffff, 1));
+
+			// const hemiLight = new THREE.HemisphereLight(0xddeeff, 0x0f0e0d, 0.2);
+			// scene.add(hemiLight);
+
+			// const light = new THREE.AmbientLight( 0xffffff, 1 );
+			// scene.add(light);
+
+			const textureLoader = new THREE.TextureLoader();
+
+			const diffuse = textureLoader.load('textures/carbon/Carbon.png');
+			diffuse.encoding = THREE.sRGBEncoding;
+			diffuse.wrapS = THREE.RepeatWrapping;
+			diffuse.wrapT = THREE.RepeatWrapping;
+			diffuse.repeat.x = 10;
+			diffuse.repeat.y = 10;
+
+			const normalMap = textureLoader.load('textures/carbon/Carbon_Normal.png');
+			normalMap.wrapS = THREE.RepeatWrapping;
+			normalMap.wrapT = THREE.RepeatWrapping;
+
+			const normalMap2 = textureLoader.load('textures/water/Water_1_M_Normal.jpg');
+
+			const normalMap3 = new THREE.CanvasTexture(new FlakesTexture());
+			normalMap3.wrapS = THREE.RepeatWrapping;
+			normalMap3.wrapT = THREE.RepeatWrapping;
+			normalMap3.repeat.x = 10;
+			normalMap3.repeat.y = 6;
+			normalMap3.anisotropy = 16;
+
+			const normalMap4 = textureLoader.load('textures/golfball.jpg');
+
+			const clearcoatNormaMap = textureLoader.load('textures/pbr/Scratched_gold/Scratched_gold_01_1K_Normal.png');
+
+			const color = new THREE.Color();
+			const Box = new THREE.BoxGeometry(20, 20, 20);
+			for (let i = 0; i < 500; i++) {
+				// const object = new THREE.Mesh(Box, new THREE.MeshPhysicalMaterial({ color: Math.random() * 0xffffff }));
+				const object = new THREE.Mesh(Box, new THREE.MeshPhysicalMaterial({
+					roughness: 0.5,
+					clearcoat: 1.0,
+					clearcoatRoughness: 0.1,
+					//map: diffuse,
+					normalMap: normalMap,
+					color: Math.random() * 0xffffff
+				}));
+
+				object.position.x = Math.random() * 800 - 400;
+				object.position.y = Math.random() * 800 - 400;
+				object.position.z = Math.random() * 800 - 400;
+
+				object.rotation.x = Math.random() * 2 * Math.PI;
+				object.rotation.y = Math.random() * 2 * Math.PI;
+				object.rotation.z = Math.random() * 2 * Math.PI;
+
+				object.scale.x = Math.random() + 0.5;
+				object.scale.y = Math.random() + 0.5;
+				object.scale.z = Math.random() + 0.5;
+
+				scene.add(object);
+				//physics.addMesh(object);
+			}
+
+			const Cylinder = new THREE.CylinderGeometry(0, 10, 30, 4, 1);
+			for (let i = 0; i < 500; i++) {
+				// const object2 = new THREE.Mesh(Cylinder, new THREE.MeshLambertMaterial({ color: Math.random() * 0xffffff }));
+				const object2 = new THREE.Mesh(Cylinder, new THREE.MeshPhysicalMaterial({
+					clearcoat: 1.0,
+					clearcoatRoughness: 0.1,
+					metalness: 0.9,
+					roughness: 0.5,
+					color: Math.random() * 0xffffff,
+					normalMap: normalMap3,
+					normalScale: new THREE.Vector2(0.15, 0.15)
+
+				}));
+
+				object2.position.x = Math.random() * 800 - 400;
+				object2.position.y = Math.random() * 800 - 400;
+				object2.position.z = Math.random() * 800 - 400;
+
+				object2.rotation.x = Math.random() * 2 * Math.PI;
+				object2.rotation.y = Math.random() * 2 * Math.PI;
+				object2.rotation.z = Math.random() * 2 * Math.PI;
+
+				object2.scale.x = Math.random() + 0.5;
+				object2.scale.y = Math.random() + 0.5;
+				object2.scale.z = Math.random() + 0.5;
+
+				scene.add(object2);
+				//physics.addMesh(object2);
+			}
+
+			const Sphere = new THREE.IcosahedronGeometry(10, 3);
+			for (let i = 0; i < 500; i++) {
+				//const object3 = new THREE.Mesh(Sphere, new THREE.MeshLambertMaterial({ color: Math.random() * 0xffffff }));
+				const object3 = new THREE.Mesh(Sphere, new THREE.MeshPhysicalMaterial({
+					metalness: 0.0,
+					roughness: 0.1,
+					clearcoat: 1.0,
+					normalMap: normalMap4,
+					clearcoatNormalMap: clearcoatNormaMap,
+					color: Math.random() * 0xffffff,
+					// y scale is negated to compensate for normal map handedness.
+					clearcoatNormalScale: new THREE.Vector2(2.0, - 2.0)
+				}));
+
+				object3.position.x = Math.random() * 800 - 400;
+				object3.position.y = Math.random() * 800 - 400;
+				object3.position.z = Math.random() * 800 - 400;
+
+				object3.rotation.x = Math.random() * 2 * Math.PI;
+				object3.rotation.y = Math.random() * 2 * Math.PI;
+				object3.rotation.z = Math.random() * 2 * Math.PI;
+
+				object3.scale.x = Math.random() + 0.5;
+				object3.scale.y = Math.random() + 0.5;
+				object3.scale.z = Math.random() + 0.5;
+
+				scene.add(object3);
+				//physics.addMesh(object3);
+			}
+
+
+			raycaster = new THREE.Raycaster();
+
+			renderer = new THREE.WebGLRenderer({ antialias: true });
+			renderer.setPixelRatio(window.devicePixelRatio);
+			renderer.setSize(window.innerWidth, window.innerHeight);
+			container.appendChild(renderer.domElement);
+
+			stats = new Stats();
+			container.appendChild(stats.dom);
+
+			const gui = new GUI();
+
+			gui.add(paramC, 'orthographicCamera').name('use orthographic').onChange(function (value) {
+				controls.dispose();
+				createControls(value ? orthographicCamera : perspectiveCamera);
+
+			});
+
+			window.addEventListener('resize', onWindowResize);
+			document.addEventListener('mousemove', onPointerMove);
+			createControls(perspectiveCamera);
+
+		}
+
+		function onWindowResize() {
+			const aspect = window.innerWidth / window.innerHeight;
+			// spinCamera.aspect = aspect;
+			// spinCamera.updateProjectionMatrix();
+			perspectiveCamera.aspect = aspect;
+			perspectiveCamera.updateProjectionMatrix();
+
+			orthographicCamera.left = - frustumSize * aspect / 2;
+			orthographicCamera.right = frustumSize * aspect / 2;
+			orthographicCamera.top = frustumSize / 2;
+			orthographicCamera.bottom = - frustumSize / 2;
+			orthographicCamera.updateProjectionMatrix();
+
+			renderer.setSize(window.innerWidth, window.innerHeight);
+			controls.handleResize();
+		}
+
+		function createControls(camera) {
+			controls = new TrackballControls(camera, renderer.domElement);
+			controls.rotateSpeed = 1.0;
+			controls.zoomSpeed = 1.2;
+			controls.panSpeed = 0.8;
+			controls.keys = ['KeyA', 'KeyS', 'KeyD'];
+		}
+
+		function onPointerMove(event) {
+			pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
+			pointer.y = - (event.clientY / window.innerHeight) * 2 + 1;
+		}
+
+		function animate() {
+			requestAnimationFrame(animate);
+			controls.update();
+			stats.update();
+			render();
+		}
+
+		function render() {
+
+			//theta += 0.1;
+			//createControls( param.CameraChoice );
+
+			const camera = (paramC.orthographicCamera) ? orthographicCamera : perspectiveCamera;
+			//controls.update();
+			// camera.position.x = radius * Math.sin(THREE.MathUtils.degToRad(theta));
+			// camera.position.y = radius * Math.sin(THREE.MathUtils.degToRad(theta));
+			// camera.position.z = radius * Math.cos(THREE.MathUtils.degToRad(theta));
+			// camera.lookAt(scene.position);
+			// camera.updateMatrixWorld();
+
+			const timer = Date.now() * 0.00025;
+			particleLight.position.x = Math.sin(timer * 7) * 300;
+			particleLight.position.y = Math.cos(timer * 5) * 400;
+			particleLight.position.z = Math.cos(timer * 3) * 300;
+
+			// find intersections
+
+			raycaster.setFromCamera(pointer, camera);
+			const intersects = raycaster.intersectObjects(scene.children, false);
+			if (intersects.length > 0) {
+				if (INTERSECTED != intersects[0].object) {
+					if (INTERSECTED) INTERSECTED.material.emissive.setHex(INTERSECTED.currentHex);
+					INTERSECTED = intersects[0].object;
+					INTERSECTED.currentHex = INTERSECTED.material.emissive.getHex();
+					INTERSECTED.material.emissive.setHex(0xff0000);
+				}
+			} else {
+				if (INTERSECTED) INTERSECTED.material.emissive.setHex(INTERSECTED.currentHex);
+				INTERSECTED = null;
+			}
+
+			// let index = Math.floor(Math.random() * boxes.count);
+			// //position.set(0, Math.random() + 1, 0);
+			// physics.setMeshPosition(boxes, position, index);
+
+			// index = Math.floor(Math.random() * spheres.count);
+			// //position.set(0, Math.random() + 1, 0);
+			// physics.setMeshPosition(spheres, position, index);
+
+			renderer.render(scene, camera);
+		}
+
+	</script>
+
+</body>
+
+</html>

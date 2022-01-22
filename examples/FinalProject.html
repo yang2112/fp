@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<title>Final Project by Group 10</title>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+	<link type="text/css" rel="stylesheet" href="main.css">
+	<style>
+		body {
+			background-color: #f0f0f0;
+			color: #444;
+		}
+		a {
+			color: #08f;
+		}
+	</style>
+</head>
+
+<body>
+
+	<div id="info">
+		<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> Final Project by Group 10
+	</div>
+
+	<script type="module">
+
+		import * as THREE from '../build/three.module.js';
+
+		import Stats from './jsm/libs/stats.module.js';
+		import { TrackballControls } from './jsm/controls/TrackballControls.js';
+		import { GUI } from './jsm/libs/lil-gui.module.min.js';
+		import { OrbitControls } from './jsm/controls/OrbitControls.js';
+		import * as BufferGeometryUtils from './jsm/utils/BufferGeometryUtils.js';
+		
+		let material, container, stats, gui, guiStatsEl;
+		let controls, scene, raycaster, renderer;
+		let bulbLight, bulbMat, hemiLight, particleLight;
+		let camera, spinCamera, perspectiveCamera, orthographicCamera;
+		let ballMat, cubeMat, floorMat;
+		let previousShadowMap = false;
+		let INTERSECTED;
+		let theta = 0;
+
+		const radius = 100;
+		const frustumSize = 400;
+		const paramC = {
+			orthographicCamera: false
+		};
+		const pointer = new THREE.Vector2();
+
+		// Lighting Parameters //
+
+		// Ref for lumens: http://www.power-sure.com/lumens.htm
+		const bulbLuminousPowers = {
+			"1100 lm": 1100,
+			"350 lm": 350,
+			"170 lm": 170,
+			"80 lm": 80,
+			"40 lm": 40,
+			"18 lm": 18,
+			"9 lm": 9,
+			"5 lm": 5,
+			"2 lm": 2,
+			"Off": 0
+		};
+
+		// Ref for solar irradiances: https://en.wikipedia.org/wiki/Lux
+		const hemiLuminousIrradiances = {
+			"0.0001 lx (Moonless Night)": 0.0001,
+			"0.002 lx (Night Airglow)": 0.002,
+			"0.5 lx (Moon Light1)": 0.5,
+			"0.8 lx (Moon Light2)": 0.8,
+			"1.2 lx (Moon Light3)": 1.2,
+			"1.8 lx (Full Moon)": 1.8,
+			"2.3 lx (City Twilight)": 2.3,
+			"3.5 lx (Living Room)": 3.5,
+			"10 lx (Very Overcast)": 10,
+			"35 lx (Office Room)": 35,
+			"40 lx (Sunrise/Sunset)": 40,
+			"100 lx (Overcast)": 100,
+			"180 lx (Daylight)": 180,
+			"500 lx (Direct Sun)": 500
+		};
+
+		// GUI //
+
+		const params = {
+			shadows: true,
+			exposure: 1.25,
+			bulbPower: Object.keys(bulbLuminousPowers)[6],
+			hemiIrradiance: Object.keys(hemiLuminousIrradiances)[5],
+			changeColor: false,
+			doSpin: false,
+			changeScale: false,
+			count: 500
+		};
+
+		// Matrix for position & orientation //
+
+		const randomizeMatrix = function() {
+			const position = new THREE.Vector3();
+			const rotation = new THREE.Euler();
+			const quaternion = new THREE.Quaternion();
+			const scale = new THREE.Vector3();
+			return function(matrix) {
+
+				position.x = Math.random() * 800 - 400;
+				position.y = Math.random() * 800 - 400;
+				position.z = Math.random() * 800 - 400;
+
+				rotation.x = Math.random() * 2 * Math.PI;
+				rotation.y = Math.random() * 2 * Math.PI;
+				rotation.z = Math.random() * 2 * Math.PI;
+
+				quaternion.setFromEuler(rotation);
+
+				scale.x = Math.random() + 0.5;
+				scale.y = Math.random() + 0.5;
+				scale.z = Math.random() + 0.5;
+
+				matrix.compose(position, quaternion, scale);
+			};
+		}();
+
+		//
+
+		init();
+		initMesh();
+		animate();
+
+		// Function clean(): to remove previous objects
+
+		function clean() {
+
+			const meshes = [];
+			scene.traverse(function(object) {
+				if (object.isMesh) meshes.push(object);
+			});
+
+			for (let i = 0; i < meshes.length; i ++) {
+				const mesh = meshes[i];
+				mesh.material.dispose();
+				mesh.geometry.dispose();
+				scene.remove( mesh );
+			}
+		}
+
+		// Function initMesh(): to initialize objects
+
+		function initMesh() {
+
+			// Textures //
+
+			const textureLoader = new THREE.TextureLoader();
+			const normalMap = textureLoader.load('textures/carbon/Carbon_Normal.png');
+			normalMap.wrapS = THREE.RepeatWrapping;
+			normalMap.wrapT = THREE.RepeatWrapping;
+			const normalMap2 = textureLoader.load('textures/water/Water_1_M_Normal.jpg');
+			const normalMap4 = textureLoader.load('textures/golfball.jpg');
+			const clearcoatNormaMap = textureLoader.load('textures/pbr/Scratched_gold/Scratched_gold_01_1K_Normal.png');
+
+			// Remove previous objects //
+
+			clean();
+
+			// Objects //
+
+			const matrix = new THREE.Matrix4();
+
+			const Box = new THREE.BoxGeometry(20, 20, 20);
+			for (let i = 0; i < params.count; i++) {
+				//const object = new THREE.Mesh(Box, new THREE.MeshLambertMaterial({ color: Math.random() * 0xffffff }));
+				const object = new THREE.Mesh(Box, new THREE.MeshPhysicalMaterial({
+					roughness: 0.5,
+					clearcoat: 1.0,
+					clearcoatRoughness: 0.1,
+					//map: diffuse,
+					normalMap: normalMap,
+					color: Math.random() * 0xffffff,
+					needsUpdate: true
+				}));
+
+				randomizeMatrix(matrix);
+				object.applyMatrix4(matrix);
+
+				object.receiveShadow = true;
+				object.castShadow = true;
+				scene.add(object);
+			}
+
+			const Cylinder = new THREE.CylinderGeometry(0, 10, 30, 4, 1);
+			for (let i = 0; i < params.count; i++) {
+				//const object2 = new THREE.Mesh(Cylinder, new THREE.MeshLambertMaterial({ color: Math.random() * 0xffffff }));
+				const object2 = new THREE.Mesh(Cylinder, new THREE.MeshPhysicalMaterial({
+					clearcoat: 1.0,
+					clearcoatRoughness: 0.1,
+					metalness: 0.9,
+					roughness: 0.5,
+					color: Math.random() * 0xffffff,
+					normalMap: normalMap2,
+					normalScale: new THREE.Vector2(0.15, 0.15),
+					needsUpdate: true
+				}));
+
+				randomizeMatrix(matrix);
+				object2.applyMatrix4(matrix);
+
+				object2.receiveShadow = true;
+				object2.castShadow = true;
+				scene.add(object2);
+			}
+
+			const Sphere = new THREE.IcosahedronGeometry(10, 3);
+			for (let i = 0; i < params.count; i++) {
+				//const object3 = new THREE.Mesh(Sphere, new THREE.MeshLambertMaterial({ color: Math.random() * 0xffffff }));
+				const object3 = new THREE.Mesh(Sphere, new THREE.MeshPhysicalMaterial({
+					metalness: 0.0,
+					oughness: 0.1,
+					clearcoat: 1.0,
+					normalMap: normalMap4,
+					clearcoatNormalMap: clearcoatNormaMap,
+					color: Math.random() * 0xffffff,
+					// y scale is negated to compensate for normal map handedness.
+					clearcoatNormalScale: new THREE.Vector2(2.0, - 2.0),
+					needsUpdate: true
+				}));
+
+				randomizeMatrix(matrix);
+				object3.applyMatrix4(matrix);
+
+				object3.receiveShadow = true;
+				object3.castShadow = true;
+				scene.add(object3);
+			}
+		}
+
+		//
+
+		function init() {
+
+			container = document.createElement('div');
+			document.body.appendChild(container);
+
+			// Camera //
+
+			const aspect = window.innerWidth / window.innerHeight;
+			spinCamera = new THREE.PerspectiveCamera(70, aspect, 1, 10000);
+			spinCamera.position.z = 500;
+
+			perspectiveCamera = new THREE.PerspectiveCamera(60, aspect, 1, 1000);
+			perspectiveCamera.position.z = 500;
+
+			orthographicCamera = new THREE.OrthographicCamera(frustumSize * aspect / - 2, frustumSize * aspect / 2, frustumSize / 2, frustumSize / - 2, 1, 1000);
+			orthographicCamera.position.z = 500;
+
+			// Scene //
+
+			scene = new THREE.Scene();
+			scene.background = new THREE.Color(0x102030);
+			//scene.background = new THREE.Color(0xf0f0f0);
+			//scene.fog = new THREE.FogExp2(0xcccccc, 0.002);
+
+			// Lighting //
+
+			//const bulbGeometry = new THREE.SphereGeometry(0.02, 16, 8);
+			const bulbGeometry = new THREE.IcosahedronGeometry(5, 3);
+			bulbLight = new THREE.PointLight(0xffee88, 1, 1000, 2);
+			bulbMat = new THREE.MeshStandardMaterial({
+				emissive: 0xffffee,
+				emissiveIntensity: 1,
+				color: 0x000000
+			});
+			bulbLight.add(new THREE.Mesh(bulbGeometry, bulbMat));
+			bulbLight.position.set(0, 2, 0);
+			bulbLight.castShadow = true;
+			scene.add(bulbLight);
+
+			hemiLight = new THREE.HemisphereLight(0xddeeff, 0x0f0e0d, 0.02);
+			scene.add(hemiLight)
+
+			// Ray Caster //
+
+			raycaster = new THREE.Raycaster();
+
+			// Renderer //
+
+			renderer = new THREE.WebGLRenderer({ antialias: true });
+			renderer.setPixelRatio(window.devicePixelRatio);
+			renderer.setSize(window.innerWidth, window.innerHeight);
+			renderer.toneMapping = THREE.ReinhardToneMapping;
+			//renderer.shadowMap.enabled = true;
+			//renderer.outputEncoding = THREE.sRGBEncoding;
+			//renderer.physicallyCorrectLights = true;
+			container.appendChild(renderer.domElement);
+
+			// Stats //
+
+			stats = new Stats();
+			container.appendChild(stats.dom);
+
+			// GUI //
+
+			const gui = new GUI();
+
+			const cameraFolder = gui.addFolder( 'Camera' );
+			cameraFolder.add(paramC, 'orthographicCamera').name('use orthographic').onChange(function (value){
+				controls.dispose();
+				createControls(value ? orthographicCamera : perspectiveCamera);
+			});
+			cameraFolder.open();
+
+			const lightFolder = gui.addFolder( 'Shading & Lighting' );
+			lightFolder.add(params, 'hemiIrradiance', Object.keys(hemiLuminousIrradiances));
+			lightFolder.add(params, 'bulbPower', Object.keys(bulbLuminousPowers));
+			lightFolder.add(params, 'exposure', 0.5, 1.5);
+			lightFolder.add(params, 'shadows');
+			lightFolder.open();
+
+			const objFolder = gui.addFolder( 'Object' );
+			objFolder.add(params, 'count', 1, 1000).step(5).onChange(initMesh);
+			objFolder.add(params, 'changeColor');
+			objFolder.add(params, 'doSpin');
+			objFolder.add(params, 'changeScale');
+			objFolder.open();
+
+			// Listeners //
+
+			window.addEventListener('resize', onWindowResize);
+			document.addEventListener('mousemove', onPointerMove);
+			if (!params.doSpin) createControls(perspectiveCamera);
+		}
+
+		// function onWindowResize(): to handle resize
+
+		function onWindowResize() {
+
+			const aspect = window.innerWidth / window.innerHeight;
+
+			if (params.doSpin) {
+				spinCamera.aspect = aspect;
+				spinCamera.updateProjectionMatrix();
+			}
+
+			if (!params.doSpin) {
+				perspectiveCamera.aspect = aspect;
+				perspectiveCamera.updateProjectionMatrix();
+
+				orthographicCamera.left = - frustumSize * aspect / 2;
+				orthographicCamera.right = frustumSize * aspect / 2;
+				orthographicCamera.top = frustumSize / 2;
+				orthographicCamera.bottom = - frustumSize / 2;
+				orthographicCamera.updateProjectionMatrix();
+
+				controls.handleResize();
+			}
+
+			renderer.setSize(window.innerWidth, window.innerHeight);
+		}
+
+		//
+
+		function createControls(camera) {
+			controls = new TrackballControls(camera, renderer.domElement);
+			controls.rotateSpeed = 1.0;
+			controls.zoomSpeed = 1.2;
+			controls.panSpeed = 0.8;
+			controls.keys = ['KeyA', 'KeyS', 'KeyD'];
+		}
+
+		//
+
+		function onPointerMove(event) {
+			pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
+			pointer.y = - (event.clientY / window.innerHeight) * 2 + 1;
+		}
+
+		//
+
+		function animate() {
+			requestAnimationFrame(animate);
+			controls.update();
+			stats.update();
+			render();
+		}
+
+		//
+
+		function render() {
+
+			theta += 0.1;
+
+			renderer.toneMappingExposure = Math.pow(params.exposure, 5.0); // to allow for very bright scenes.
+			renderer.shadowMap.enabled = params.shadows;
+			bulbLight.castShadow = params.shadows;
+
+			if (params.shadows !== previousShadowMap) {
+				previousShadowMap = params.shadows;
+			}
+
+			bulbLight.power = bulbLuminousPowers[params.bulbPower];
+			bulbMat.emissiveIntensity = bulbLight.intensity / Math.pow(0.02, 2.0);
+			// convert from intensity to irradiance at bulb surface
+
+			hemiLight.intensity = hemiLuminousIrradiances[params.hemiIrradiance];
+			//const time = Date.now() * 0.0005;
+			//bulbLight.position.y = Math.cos(time) * 75 + 125;
+			const timer = Date.now() * 0.00005;
+			bulbLight.position.x = Math.sin(timer * 7) * 300;
+			bulbLight.position.y = Math.cos(timer * 5) * 400;
+			bulbLight.position.z = Math.cos(timer * 3) * 300;
+
+			//const timer = Date.now() * 0.00025;
+			// particleLight.position.x = Math.sin(timer * 7) * 300;
+			// particleLight.position.y = Math.cos(timer * 5) * 400;
+			// particleLight.position.z = Math.cos(timer * 3) * 300;
+
+			// No Auto Spin //
+			if (!params.doSpin) {
+				const camera = (paramC.orthographicCamera) ? orthographicCamera : perspectiveCamera;
+
+				raycaster.setFromCamera(pointer, camera);
+				const intersects = raycaster.intersectObjects(scene.children, false);
+				if (intersects.length > 0) {
+					if (INTERSECTED != intersects[0].object) {
+						if (INTERSECTED) INTERSECTED.material.emissive.setHex(INTERSECTED.currentHex);
+						// document.body.style.cousor = 'pointer';
+						INTERSECTED = intersects[0].object;
+						// material.color.set(0xff0000);
+						if (params.changeColor) INTERSECTED.material.color.set(Math.random() * 0xffffff);
+						if (params.changeScale) INTERSECTED.scale.set(Math.random() + 0.5, Math.random() + 0.5, Math.random() + 0.5);
+						INTERSECTED.currentHex = INTERSECTED.material.emissive.getHex();
+						INTERSECTED.material.emissive.setHex(0xff0000);
+					}
+				} else {
+					if (INTERSECTED) INTERSECTED.material.emissive.setHex(INTERSECTED.currentHex);
+					INTERSECTED = null;
+				}
+
+				renderer.render(scene, camera);
+			}
+
+			// With Auto Spin//
+			if (params.doSpin) {
+				const camera = spinCamera;
+
+				camera.position.x = radius * Math.sin(THREE.MathUtils.degToRad(theta));
+				camera.position.y = radius * Math.sin(THREE.MathUtils.degToRad(theta));
+				camera.position.z = radius * Math.cos(THREE.MathUtils.degToRad(theta));
+				camera.lookAt(scene.position);
+				camera.updateMatrixWorld();
+
+				raycaster.setFromCamera(pointer, camera);
+				const intersects = raycaster.intersectObjects(scene.children, false);
+				if (intersects.length > 0) {
+					if (INTERSECTED != intersects[0].object) {
+						if (INTERSECTED) INTERSECTED.material.emissive.setHex(INTERSECTED.currentHex);
+						// document.body.style.cousor = 'pointer';
+						INTERSECTED = intersects[0].object;
+						// material.color.set(0xff0000);
+						if (params.changeColor) INTERSECTED.material.color.set(Math.random() * 0xffffff);
+						if (params.changeScale) INTERSECTED.scale.set(Math.random() + 0.5, Math.random() + 0.5, Math.random() + 0.5);
+						INTERSECTED.currentHex = INTERSECTED.material.emissive.getHex();
+						INTERSECTED.material.emissive.setHex(0xff0000);
+					}
+				} else {
+					if (INTERSECTED) INTERSECTED.material.emissive.setHex(INTERSECTED.currentHex);
+					INTERSECTED = null;
+				}
+
+				renderer.render(scene, camera);
+			}
+
+			// find intersections
+
+		}
+
+	</script>
+
+</body>
+
+</html>

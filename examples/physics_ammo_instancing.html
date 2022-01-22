@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<title>three.js physics - ammo.js instancing</title>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+	<link type="text/css" rel="stylesheet" href="main.css">
+</head>
+
+<body>
+
+	<div id="info">
+		<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> physics - ammo.js instancing
+	</div>
+
+	<script src="js/libs/ammo.wasm.js"></script>
+
+	<script type="module">
+
+		import * as THREE from '../build/three.module.js';
+		import { OrbitControls } from './jsm/controls/OrbitControls.js';
+		import { AmmoPhysics } from './jsm/physics/AmmoPhysics.js';
+		import Stats from './jsm/libs/stats.module.js';
+		import { HDRCubeTextureLoader } from './jsm/loaders/HDRCubeTextureLoader.js';
+		import { FlakesTexture } from './jsm/textures/FlakesTexture.js';
+
+		let camera, scene, renderer, stats;
+		let physics, position, scale, rotation;
+
+		let boxes, spheres, cyli;
+
+		init();
+
+		async function init() {
+
+			physics = await AmmoPhysics();
+			position = new THREE.Vector3();
+			//scale = new THREE.Vector3();
+			//
+			camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+			camera.position.set(2, 2, 2);
+			camera.lookAt(0, 0.5, 0);
+
+			scene = new THREE.Scene();
+			scene.background = new THREE.Color(0x666666);
+
+			const hemiLight = new THREE.HemisphereLight();
+			hemiLight.intensity = 1.0;
+			scene.add(hemiLight);
+
+			const dirLight = new THREE.DirectionalLight();
+			dirLight.position.set(5, 5, 5);
+			dirLight.castShadow = true;
+			dirLight.shadow.camera.zoom = 2;
+			scene.add(dirLight);
+
+			const textureLoader = new THREE.TextureLoader();
+
+			const diffuse = textureLoader.load('textures/carbon/Carbon.png');
+			diffuse.encoding = THREE.sRGBEncoding;
+			diffuse.wrapS = THREE.RepeatWrapping;
+			diffuse.wrapT = THREE.RepeatWrapping;
+			diffuse.repeat.x = 10;
+			diffuse.repeat.y = 10;
+
+			const normalMap = textureLoader.load('textures/carbon/Carbon_Normal.png');
+			normalMap.wrapS = THREE.RepeatWrapping;
+			normalMap.wrapT = THREE.RepeatWrapping;
+
+			const normalMap2 = textureLoader.load('textures/water/Water_1_M_Normal.jpg');
+
+			const normalMap3 = new THREE.CanvasTexture(new FlakesTexture());
+			normalMap3.wrapS = THREE.RepeatWrapping;
+			normalMap3.wrapT = THREE.RepeatWrapping;
+			normalMap3.repeat.x = 10;
+			normalMap3.repeat.y = 6;
+			normalMap3.anisotropy = 16;
+
+			const normalMap4 = textureLoader.load('textures/golfball.jpg');
+
+			const clearcoatNormaMap = textureLoader.load('textures/pbr/Scratched_gold/Scratched_gold_01_1K_Normal.png');
+
+			const floor = new THREE.Mesh(
+				new THREE.BoxGeometry(5, 5, 5),
+				new THREE.ShadowMaterial({ color: 0x111111 })
+			);
+			floor.position.y = - 2.5;
+			floor.receiveShadow = true;
+			scene.add(floor);
+			physics.addMesh(floor);
+			//
+			const material = new THREE.MeshPhysicalMaterial();
+			const materialBox = new THREE.MeshPhysicalMaterial({
+				roughness: 0.5,
+				clearcoat: 1.0,
+				clearcoatRoughness: 0.1,
+				//map: diffuse,
+				normalMap: normalMap,
+				//color: Math.random() * 0xffffff
+			});
+			//const matrix = new THREE.Matrix4();
+			
+			// matrix.rotation.x = Math.random() * 2 * Math.PI;
+			// matrix.rotation.y = Math.random() * 2 * Math.PI;
+			// matrix.rotation.z = Math.random() * 2 * Math.PI;
+
+			// matrix.scale.x = Math.random() + 0.5;
+			// matrix.scale.y = Math.random() + 0.5;
+			// matrix.scale.z = Math.random() + 0.5;
+
+			const color = new THREE.Color();
+			const matrix = new THREE.Matrix4();
+			const offset = new THREE.Vector3();
+			const orientation = new THREE.Quaternion();
+			const scale = new THREE.Vector3( Math.random() + 0.5, Math.random() + 0.5, Math.random() + 0.5 );
+			let x, y, z, w;
+			// Boxes
+			const geometryBox = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+			boxes = new THREE.InstancedMesh(geometryBox, materialBox, 100);
+			boxes.instanceMatrix.setUsage(THREE.DynamicDrawUsage); // will be updated every frame
+			boxes.castShadow = true;
+			boxes.receiveShadow = true;
+			scene.add(boxes);
+
+			for (let i = 0; i < boxes.count; i++) {
+
+				//matrix.setPosition(Math.random() * 4 - 2, Math.random() * 4, Math.random() * 4 - 2);
+				// matrix.makeRotationX(Math.random() * 2 * Math.PI);
+				// matrix.makeRotationY(Math.random() * 2 * Math.PI);
+				// matrix.makeRotationZ(Math.random() * 2 * Math.PI);
+				//matrix.scale(scale.set(Math.random() + 0.5, Math.random() + 0.5, Math.random() + 0.5));
+
+				// offsets
+
+				x = Math.random() * 4 - 2;
+				y = Math.random() * 4;
+				z = Math.random() * 4 - 2;
+
+				//offset.set( x, y, z ).normalize();
+				//offset.multiplyScalar( 5 ); // move out at least 5 units from center in current direction
+				offset.set( x + offset.x, y + offset.y, z + offset.z );
+
+				// orientations
+
+				x = Math.random() * 2 - 1;
+				y = Math.random() * 2 - 1;
+				z = Math.random() * 2 - 1;
+				w = Math.random() * 2 - 1;
+
+				orientation.set( x, y, z, w ).normalize();
+
+				matrix.compose( offset, orientation, scale );
+
+				//mesh.setMatrixAt( i, matrix );
+
+				boxes.setMatrixAt(i, matrix);
+				// boxes[i].rotation.x = Math.random() * 2 * Math.PI;
+				// boxes[i].rotation.y = Math.random() * 2 * Math.PI;
+				// boxes[i].rotation.z = Math.random() * 2 * Math.PI;
+
+				// boxes[i].scale.x = Math.random() + 0.5;
+				// boxes[i].scale.y = Math.random() + 0.5;
+				// boxes[i].scale.z = Math.random() + 0.5;
+				boxes.setColorAt(i, color.setHex(0xffffff * Math.random()));
+
+			}
+
+			physics.addMesh(boxes, 1);
+			// Spheres
+			const geometrySphere = new THREE.IcosahedronGeometry(0.075, 3);
+			spheres = new THREE.InstancedMesh(geometrySphere, material, 100);
+			spheres.instanceMatrix.setUsage(THREE.DynamicDrawUsage); // will be updated every frame
+			spheres.castShadow = true;
+			spheres.receiveShadow = true;
+			scene.add(spheres);
+
+			for (let i = 0; i < spheres.count; i++) {
+
+				matrix.setPosition(Math.random() * 4 - 2, Math.random() * 4, Math.random() * 4 - 2);
+				spheres.setMatrixAt(i, matrix);
+				spheres.setColorAt(i, color.setHex(0xffffff * Math.random()));
+
+			}
+
+			physics.addMesh(spheres, 1);
+
+			//const geometrySphere = new THREE.IcosahedronGeometry(0.075, 3);
+			const Cylinder = new THREE.CylinderGeometry(0, 0.10, 0.30, 4, 1);
+			cyli = new THREE.InstancedMesh(Cylinder, material, 100);
+			cyli.instanceMatrix.setUsage(THREE.DynamicDrawUsage); // will be updated every frame
+			cyli.castShadow = true;
+			cyli.receiveShadow = true;
+			scene.add(cyli);
+
+			for (let i = 0; i < cyli.count; i++) {
+
+				matrix.setPosition(Math.random() * 4 - 2, Math.random() * 4, Math.random() * 4 - 2);
+				cyli.setMatrixAt(i, matrix);
+				cyli.setColorAt(i, color.setHex(0xffffff * Math.random()));
+
+			}
+
+			physics.addMesh(cyli, 1);
+			//
+			renderer = new THREE.WebGLRenderer({ antialias: true });
+			renderer.setPixelRatio(window.devicePixelRatio);
+			renderer.setSize(window.innerWidth, window.innerHeight);
+			renderer.shadowMap.enabled = true;
+			renderer.outputEncoding = THREE.sRGBEncoding;
+			document.body.appendChild(renderer.domElement);
+
+			stats = new Stats();
+			document.body.appendChild(stats.dom);
+			//
+			const controls = new OrbitControls(camera, renderer.domElement);
+			controls.target.y = 0.5;
+			controls.update();
+			animate();
+		}
+
+		function animate() {
+
+			requestAnimationFrame(animate);
+			//
+			let index = Math.floor(Math.random() * boxes.count);
+			position.set(Math.random() * 4 - 2, Math.random() * 4, Math.random() * 4 - 2);
+			//scale.set(Math.random() + 0.5, Math.random() + 0.5, Math.random() + 0.5);
+			physics.setMeshPosition(boxes, position, index);
+			//physics.setMeshScale(boxes, scale, index);
+			//
+			index = Math.floor(Math.random() * spheres.count);
+			position.set(Math.random() * 4 - 2, Math.random() * 4, Math.random() * 4 - 2);
+			physics.setMeshPosition(spheres, position, index);
+
+			index = Math.floor(Math.random() * cyli.count);
+			position.set(Math.random() * 4 - 2, Math.random() * 4, Math.random() * 4 - 2);
+			physics.setMeshPosition(cyli, position, index);
+
+			renderer.render(scene, camera);
+			stats.update();
+		}
+
+	</script>
+</body>
+
+</html>
